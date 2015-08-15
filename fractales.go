@@ -34,9 +34,9 @@ func imgHandler(w http.ResponseWriter, r *http.Request) {
 	pointY := -2. // Y coordinate of starting point of Mandelbrot or fix point for Julia (range: 2.0 to 2.0)
 	zoom := 1.    // Zoom level (only working properly for Mandelbrot)
 	julia := false
-	maxIter := 51
-	sizeX := 1000
-	sizeY := 1000
+	maxIter := 61
+	sizeX := 4000
+	sizeY := 4000
 	img := image.NewNRGBA(image.Rectangle{Max: image.Point{sizeX, sizeY}})
 	calculateImg(img, pointX, pointY, zoom, julia, maxIter)
 	png.Encode(w, img)
@@ -49,28 +49,20 @@ func calculateImg(img *image.NRGBA, pointX, pointY, zoom float64, julia bool, ma
 		minCx = pointX
 		minCy = pointY
 	}
-	maxSquAbs := 4.
 	bounds := img.Bounds()
 	stepX := math.Abs(minCx-2.) / float64(bounds.Dx()) / zoom
 	stepY := math.Abs(minCy-2.) / float64(bounds.Dy()) / zoom
-	//var wg sync.WaitGroup
-	for py := bounds.Min.Y; py < bounds.Max.Y; py++ {
-		cy := minCy + float64(py)*stepY
-		// Une goroutine par ligne.
-		//wg.Add(1)
-		//go func(cy float64) {
-		//defer wg.Done()
-		for px := bounds.Min.X; px < bounds.Max.X; px++ {
-			cx := minCx + float64(px)*stepX
-			itr := pointIteration(cx, cy, pointX, pointY, maxSquAbs, julia, maxIter)
-			img.Set(px, py, chooseColor(itr, maxIter))
+	pal := paletteToNRGBA(palette.Rainbow(maxIter, 0, 1, 1, 1, 1))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		cy := minCy + float64(y)*stepY
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			img.SetNRGBA(x, y, pal[pointIteration(minCx+float64(x)*stepX, cy, pointX, pointY, julia, maxIter)])
 		}
-		//}(cy)
 	}
-	//wg.Wait()
 }
 
-func pointIteration(cx, cy, pointX, pointY, maxSquAbs float64, julia bool, maxIter int) int {
+// pointIteration returns the number of iterations at cx, cy before it diverges.
+func pointIteration(cx, cy, pointX, pointY float64, julia bool, maxIter int) int {
 	x := 0.
 	y := 0.
 	if julia {
@@ -80,7 +72,7 @@ func pointIteration(cx, cy, pointX, pointY, maxSquAbs float64, julia bool, maxIt
 		cy = pointY
 	}
 	iter := 0
-	for squAbs := 0.; squAbs <= maxSquAbs && iter < maxIter; iter++ {
+	for squAbs := 0.; squAbs <= 4. && iter < maxIter; iter++ {
 		xt := (x * x) - (y * y) + cx
 		yt := (2. * x * y) + cy
 		x = xt
@@ -90,13 +82,14 @@ func pointIteration(cx, cy, pointX, pointY, maxSquAbs float64, julia bool, maxIt
 	return iter
 }
 
-var pal = palette.Rainbow(256, 0, 1, 1, 1, 1).Colors()
-
-func chooseColor(iterValue int, maxIter int) color.Color {
-	if iterValue != maxIter {
-		return pal[uint8(iterValue*255/maxIter)]
-		// Vert.
-		//return color.NRGBA{0, val * uint8(255/maxIter), 0, 255}
+// paletteToNRGBA renders the colors as NRGBA and append black.
+func paletteToNRGBA(pal palette.Palette) []color.NRGBA {
+	colors := pal.Colors()
+	out := make([]color.NRGBA, len(colors)+1)
+	for i := range colors {
+		r, g, b, a := colors[i].RGBA()
+		out[i] = color.NRGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
 	}
-	return color.NRGBA{0, 0, 0, 255}
+	out[len(colors)] = color.NRGBA{0, 0, 0, 255}
+	return out
 }
